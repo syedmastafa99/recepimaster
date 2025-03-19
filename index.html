@@ -808,6 +808,173 @@
         function closeModal() {
             recipeModal.style.display = 'none';
         }
+        // Function to fetch recipes from TheMealDB API
+function fetchRecipesFromAPI() {
+    // TheMealDB API endpoint for random meals
+    const apiUrl = 'https://www.themealdb.com/api/json/v1/1/random.php';
+    const fetchPromises = [];
+    
+    // Create 10 fetch promises for random recipes
+    for (let i = 0; i < 10; i++) {
+        fetchPromises.push(
+            fetch(apiUrl)
+                .then(response => response.json())
+                .then(data => data.meals[0])
+        );
+    }
+    
+    // Wait for all fetches to complete
+    Promise.all(fetchPromises)
+        .then(apiRecipes => {
+            // Process and add the recipes to your database
+            apiRecipes.forEach((apiRecipe, index) => {
+                // Extract ingredients and measures from the API response
+                const ingredients = [];
+                for (let i = 1; i <= 20; i++) {
+                    const ingredient = apiRecipe[`strIngredient${i}`];
+                    const measure = apiRecipe[`strMeasure${i}`];
+                    
+                    if (ingredient && ingredient.trim() !== '') {
+                        ingredients.push(`${measure ? measure.trim() + ' ' : ''}${ingredient.trim()}`);
+                    }
+                }
+                
+                // Extract instructions and split them into steps
+                const instructionSteps = apiRecipe.strInstructions
+                    .split(/\r\n|\r|\n/)
+                    .filter(step => step.trim() !== '');
+                
+                // Map cuisine areas to your existing cuisines
+                let cuisine = apiRecipe.strArea.toLowerCase();
+                if (!["italian", "chinese", "mexican", "indian", "japanese", "thai", "french", "mediterranean"].includes(cuisine)) {
+                    // If not in your list, set to empty string
+                    cuisine = "";
+                }
+                
+                // Determine diet restrictions based on ingredients and category
+                const diet = [];
+                const meatIngredients = ['chicken', 'beef', 'pork', 'lamb', 'fish', 'seafood', 'meat', 'bacon'];
+                const dairyIngredients = ['milk', 'cheese', 'cream', 'butter', 'yogurt'];
+                
+                const isVegetarian = !ingredients.some(ing => 
+                    meatIngredients.some(meat => ing.toLowerCase().includes(meat))
+                );
+                
+                const isVegan = isVegetarian && !ingredients.some(ing => 
+                    dairyIngredients.some(dairy => ing.toLowerCase().includes(dairy)) || 
+                    ing.toLowerCase().includes('egg')
+                );
+                
+                if (isVegan) diet.push('vegan', 'vegetarian');
+                else if (isVegetarian) diet.push('vegetarian');
+                
+                if (apiRecipe.strCategory.toLowerCase().includes('dessert') || 
+                    ingredients.every(ing => !ing.toLowerCase().includes('gluten'))) {
+                    diet.push('gluten-free');
+                }
+                
+                // Create a recipe object in your format
+                const recipe = {
+                    id: recipes.length + index + 1,
+                    title: apiRecipe.strMeal,
+                    cuisine: cuisine,
+                    diet: diet,
+                    // Estimate time based on number of steps
+                    time: `${Math.max(15, instructionSteps.length * 5)} min`,
+                    servings: 4, // TheMealDB doesn't provide serving size, default to 4
+                    ingredients: ingredients,
+                    instructions: instructionSteps,
+                    image: apiRecipe.strMealThumb || "/api/placeholder/400/300"
+                };
+                
+                // Add to your recipes array
+                recipes.push(recipe);
+            });
+            
+            // Update the UI after adding all recipes
+            displayPopularRecipes();
+            console.log(`Added ${apiRecipes.length} new recipes from TheMealDB`);
+            
+            // Update popular recipes to include some of the new ones
+            updatePopularRecipes();
+        })
+        .catch(error => {
+            console.error('Error fetching recipes:', error);
+        });
+}
+
+// Function to update popular recipes to include some of the new ones
+function updatePopularRecipes() {
+    // Keep some of the original popular recipes
+    const originalPopular = popularRecipes.slice(0, 3);
+    
+    // Add some of the new recipes to popular
+    const newPopular = [];
+    const startIndex = recipes.length - 10; // Start from the new recipes
+    
+    // Add 2 new recipes to popular
+    for (let i = 0; i < 2; i++) {
+        const randomIndex = startIndex + Math.floor(Math.random() * 10);
+        newPopular.push(recipes[randomIndex].id);
+    }
+    
+    // Combine original and new popular recipes
+    popularRecipes.length = 0; // Clear the array
+    popularRecipes.push(...originalPopular, ...newPopular);
+    
+    // Refresh the UI
+    displayPopularRecipes();
+}
+
+// Add this function to initialize the recipe database
+function initializeRecipeDatabase() {
+    // Check if we have already loaded recipes from API
+    if (recipes.length <= 10) {
+        fetchRecipesFromAPI();
+    }
+}
+
+// Modify your init function to call the new initialization function
+function init() {
+    // Display popular recipes (initial set)
+    displayPopularRecipes();
+    
+    // Add event listeners
+    ingredientInput.addEventListener('keypress', handleIngredientInput);
+    searchBtn.addEventListener('click', searchRecipes);
+    closeBtn.addEventListener('click', closeModal);
+    
+    // Close modal when clicking outside of it
+    window.addEventListener('click', function(event) {
+        if (event.target === recipeModal) {
+            closeModal();
+        }
+    });
+    
+    // Initialize recipe database from API
+    initializeRecipeDatabase();
+    
+    // Add a "Load More Recipes" button
+    addLoadMoreButton();
+}
+
+// Function to add a "Load More Recipes" button
+function addLoadMoreButton() {
+    const container = document.querySelector('.search-container');
+    
+    // Create the button
+    const loadMoreBtn = document.createElement('button');
+    loadMoreBtn.textContent = 'Load More Recipes';
+    loadMoreBtn.className = 'recipe-btn';
+    loadMoreBtn.style.marginTop = '15px';
+    loadMoreBtn.style.backgroundColor = 'var(--secondary-color)';
+    
+    // Add event listener
+    loadMoreBtn.addEventListener('click', fetchRecipesFromAPI);
+    
+    // Add to the container
+    container.appendChild(loadMoreBtn);
+}
         
         // Initialize the app
         init();
